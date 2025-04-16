@@ -1,4 +1,34 @@
-# lab_2
+# lab_2: Rmadillos Consulting Group
+#### **Topic:** Workplace Burnout and Discrimination: Exploring the Relationship with Poor Mental Health
+**Team Members:** 
+- Carmen Liang
+- Emily Lieske
+- Margaret Lubega
+
+**DATA SCI 203:** Section 2 (Mark L Labovitz)     
+**Spring 2025:** 15-Apr-2025
+
+## Folder Structure and Purpose
+
+├── LICENSE  
+├── README.md          <- This file: describes the purpose and structure of the project.  
+├── data  
+│   ├── external       <- Raw data from the 2018 GSS (*Note: This is the **only file required** to run the Rmd file.*).  
+│   ├── interim        <- Cleaned and filtered datasets created during data wrangling (*Note: **Not required** to run the Rmd file.*).  
+│   └── processed      <- Final modeling-ready datasets (*Note: **Not required** to run the Rmd file.*).  
+├── notebooks          <- The full R Markdown notebook with all analysis code, from data wrangling and cleaning to modeling and results.  
+├── references         <- GSS codebook and variables description     
+└── reports            <- Final report PDF and presentation slides used for class submission.  
+
+## Disclaimer
+
+This repository is for academic purposes only. While the dataset and methods are real, the project is exploratory in nature and should not be interpreted as definitive scientific research or policy guidance.
+
+
+
+
+
+# lab_2 Instructions
 
 The final project for MIDS w203. In this lab, students will apply what they have learned about building linear models to produce a report that analyzes a specific research question. 
 
