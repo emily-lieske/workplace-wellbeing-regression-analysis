@@ -1,15 +1,14 @@
 # lab_2: Rmadillos Consulting Group
-#### **Topic:** Workplace Burnout and Discrimination: Exploring the Relationship with Poor Mental Health
+### **Topic:** Workplace Burnout and Discrimination: Exploring the Relationship with Poor Mental Health
 **Team Members:** 
 - Carmen Liang
 - Emily Lieske
-- Margaret Lubega
+- Margaret Lubega    
 
 **DATA SCI 203:** Section 2 (Mark L Labovitz)     
 **Spring 2025:** 15-Apr-2025
 
-## Folder Structure and Purpose
-
+### Folder Structure and Purpose
 ├── LICENSE  
 ├── README.md          <- This file: describes the purpose and structure of the project.  
 ├── data  
@@ -20,11 +19,8 @@
 ├── references         <- GSS codebook and variables description     
 └── reports            <- Final report PDF and presentation slides used for class submission.  
 
-## Disclaimer
-
+### Disclaimer
 This repository is for academic purposes only. While the dataset and methods are real, the project is exploratory in nature and should not be interpreted as definitive scientific research or policy guidance.
-
-
 
 
 
