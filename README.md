@@ -5,7 +5,7 @@
 - Emily Lieske
 - Margaret Lubega    
 
-**DATA SCI 203:** Section 2 (Mark L Labovitz)     
+**DATA SCI 203:** Section 2 (Mark Labovitz)     
 **Spring 2025:** 15-Apr-2025
 
 ### Folder Structure and Purpose
