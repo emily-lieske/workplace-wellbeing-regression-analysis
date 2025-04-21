@@ -1,0 +1,864 @@
+---
+title: "Lab 2: Exploring the Relationship between Poor Mental Health and Workplace Stress and Discrimination"
+subtitle: "https://github.com/mids-w203/lab-2-rmadillos-lab2/tree/main"
+author: "Rmadillos Consulting Group - Carmen Liang, Emily Lieske, Margaret Lubega"
+date: "2025-04-15"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results='hide', warning = FALSE, message = FALSE) 
+```
+\newpage
+
+# Importance and Context
+The relationship between poor mental health and work related burnout has become an area of important research concern as people have begun to take mental health concerns more seriously for its negative impact on worker well-being and workplace satisfaction. Rmadillos Consulting Group has a long and prestigious reputation for conducting research and delivering applicable data insights for unions, political organizations and nonprofit groups. It is our highest priority to conduct research and deliver actionable insights to Less Labor Union (LLU) regarding the relationship between poor mental health and workplace stress and discrimination. By assessing the relationship between work related stress and experiences of discrimination we aim to provide LLU with a stronger direction on what areas they can focus their advocacy efforts to improve workers mental well-being and what provide ideas on areas they might want to invest in further research.
+
+Previous research such as “Work-related Mental Consequences: Implications of Burnout on Mental Health Status Among Health Care Providers.” by Ioanna V. Papathanasiou(1) has identified burnout as a contributing factor for workers mental health. Additionally, research such as “The Association Between Discrimination and Depressive Symptoms among Older African Americans: The Role of Psychological and Social Factors”(2) has identified that experiences of workplace discrimination has a negative impact on mental health. Our research aims to expand on these findings to provide a more nuanced understanding by assessing sentiments across the total population regardless of occupation and integrating both burnout and discrimination factors. Our research aims to explore the relationship between poor mental health and workplace stress and discrimination, focusing on the question: "What is the relationship between poor mental health and work related burnout and discrimination?" Our hypothesis is that employees who work more, relax less, or experience workplace discrimination will have more days of poor mental health per month, specifically looking at the variables related to workplace stress (working more and relaxing less).
+
+# Data and Methodology
+
+```{r}
+# Load necessary (1) packages and load data (2)
+library(readxl) #1
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(tidyr) 
+library(scales)
+library(tidyverse) 
+library(magrittr)
+library(knitr)
+library(patchwork)
+library(car)      #  vif function
+library(moments)  #  statistical moments
+library(stargazer) #  regression tables
+library(sandwich) #  robust standard errors
+library(lmtest)   #  coeftest function
+library(readr)
+library(gridExtra)
+
+raw_data <- read_excel("Data.xlsx", sheet = "Data") #2
+```
+
+```{r}
+head(raw_data)
+```
+
+
+```{r}
+str(raw_data)
+```
+
+
+```{r}
+lapply(raw_data, unique)
+```
+
+
+```{r}
+
+# Remove unwanted codes from character columns and replace them with NA
+raw_data_cleaned <- raw_data %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".i:  Inapplicable"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".d:  Do not Know/Cannot Choose"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".n:  No answer"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".y:  Not available in this year"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".x:  Not available in this release"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".s:  Skipped on Web"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".z:  Variable-specific reserve code"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".u:  Uncodable"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".r:  Refused"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".m:  DK, NA, IAP"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".j:  I do not have a job"))) %>%
+  mutate(across(where(is.character), ~ na_if(.x, ".p:  Not applicable (I have not faced this decision)/Not imputable")))
+
+# Convert columns to numeric
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(age = as.numeric(age), moredays = as.numeric(moredays), hrsrelax = as.numeric(hrsrelax),
+         mntlhlth = as.numeric(mntlhlth), hompop = as.numeric(hompop))
+
+# Check that the cleaning worked
+str(raw_data_cleaned)
+```
+
+
+```{r}
+# Summary of the cleaned data
+summary(raw_data_cleaned)
+```
+
+
+```{r}
+# Checking for missing values in each column
+colSums(is.na(raw_data_cleaned))
+```
+
+
+```{r}
+# Dropping empty column 'CHILDS_EXP'
+raw_data_cleaned <- raw_data_cleaned %>% select(-CHILDS_EXP)
+
+# Checking the structure of the updated dataframe to confirm the column is removed
+str(raw_data_cleaned)
+```
+
+
+```{r}
+# Dropping rows with missing data in key variables 'mntlhlth', 'moredays', 'hrsrelax'
+raw_data_filtered <- raw_data_cleaned %>%
+  filter(!is.na(mntlhlth) & !is.na(moredays) & !is.na(hrsrelax))
+
+# Checking the structure of the filtered data
+str(raw_data_filtered)
+```
+
+
+```{r}
+# Checking the number of missing values for each column after filtering the key variables
+colSums(is.na(raw_data_filtered))
+```
+
+
+```{r}
+# Dropping the 'spwrksta' column
+raw_data_cleaned <- raw_data_filtered %>%
+  select(-spwrksta)
+
+# Cnfirming column removal
+str(raw_data_cleaned)
+```
+
+
+```{r}
+# Calculate the median age excluding NA values
+median_age <- median(raw_data_cleaned$age, na.rm = TRUE)
+
+# Replace missing 'age' values with the median age
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(age = ifelse(is.na(age), median_age, age))
+
+# Check for remaining missing values in 'age'
+sum(is.na(raw_data_cleaned$age))
+```
+
+
+```{r}
+# Drop rows with missing values in 'wkageism', 'wkracism', and 'wksexism'
+raw_data_cleaned <- raw_data_cleaned %>%
+  filter(!is.na(wkageism) & !is.na(wkracism) & !is.na(wksexism))
+
+# Confirm missing values in these columns are removed
+colSums(is.na(raw_data_cleaned[, c("wkageism", "wkracism", "wksexism")]))
+```
+
+```{r}
+# Replace missing 'wealth' values with "Unknown"
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(wealth = ifelse(is.na(wealth), "Unknown", wealth))
+
+# Confirm no missing values remain in 'wealth'
+sum(is.na(raw_data_cleaned$wealth))
+```
+
+
+```{r}
+# Checking for duplicate rows
+duplicates_count <- sum(duplicated(raw_data_cleaned))
+duplicates_count
+```
+
+
+```{r}
+# Confirm categorical variables are factors
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(sex = as.factor(sex), race = as.factor(race), wkageism = as.factor(wkageism), wkracism = as.factor(wkracism),
+  wksexism = as.factor(wksexism), wealth = factor(wealth, levels = c( "Less than $5,000", "$5,000 to $20,000", "$20,000 to $40,000",
+      "$40,000 to $75,000", "$75,000 to $100,000", "$100,000 to $150,000",
+      "$150,000 to $250,000", "$250,000 to $500,000", "$500,000 to $1 million",
+      "$1 million to $2 million", "$2 million to $3 million", "$3 million to $4 million",
+      "$4 million to $5 million", "$5 million to $10 million", "Above $10 million", "Unknown"), ordered = TRUE))
+
+# Confirm factors are properly structured
+sapply(raw_data_cleaned[, c("sex", "race", "wkageism", "wkracism", "wksexism", "wealth")], levels)
+
+# Convert Yes and No columns to binary 0/1
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(wkageism_bin = ifelse(wkageism == "YES", 1, 0), wkracism_bin = ifelse(wkracism == "YES", 1, 0),
+  wksexism_bin = ifelse(wksexism == "YES", 1, 0))
+
+# Confirm binary conversion
+table(raw_data_cleaned$wkageism_bin)
+table(raw_data_cleaned$wkracism_bin)
+table(raw_data_cleaned$wksexism_bin)
+```
+
+
+```{r}
+
+# Check structure of numerical variables
+summary(raw_data_cleaned[, c("age", "hompop", "moredays", "hrsrelax", "mntlhlth")])
+
+```
+
+
+```{r}
+# Check for unexpected or unusual values in numerical variables
+consistency_check <- list(
+  age = range(raw_data_cleaned$age, na.rm = TRUE),
+  hompop = range(raw_data_cleaned$hompop, na.rm = TRUE),
+  moredays = range(raw_data_cleaned$moredays, na.rm = TRUE),
+  hrsrelax = range(raw_data_cleaned$hrsrelax, na.rm = TRUE),
+  mntlhlth = range(raw_data_cleaned$mntlhlth, na.rm = TRUE))
+
+print(consistency_check)
+
+# Checking for duplicate rows
+duplicates_count <- sum(duplicated(raw_data_cleaned))
+duplicates_count
+
+# Check for missing values
+colSums(is.na(raw_data_cleaned))
+
+```
+
+
+```{r}
+# Setting a seed for reproducibility
+set.seed(123)
+
+# Splitting the data into exploration (30%) and confirmation (70%) sets
+exploration_indices <- sample(1:nrow(raw_data_cleaned), size = 0.3 * nrow(raw_data_cleaned))
+
+exploration_set <- raw_data_cleaned[exploration_indices, ]
+confirmation_set <- raw_data_cleaned[-exploration_indices, ]
+
+# Checking the sizes of the new datasets
+nrow(raw_data_cleaned)
+nrow(exploration_set)
+nrow(confirmation_set)
+```
+```{r}
+rows_initial <- nrow(raw_data)
+rows_after_keyvars <- nrow(raw_data_filtered)
+rows_after_discrimination <- nrow(raw_data_cleaned)
+
+data_cleaning_summary <- data.frame(
+  Step = c("Initial Dataset",
+    "After removing missing values for mental health, work intensity, and relaxation time",
+    "After removing rows with missing values for age, race, or gender discrimination"),
+  Rows_Remaining = c(rows_initial, rows_after_keyvars, rows_after_discrimination),
+  Rows_Dropped = c(NA, rows_initial - rows_after_keyvars, rows_after_keyvars - rows_after_discrimination))
+colnames(data_cleaning_summary) <- c("Step", "Rows Left", "Rows Dropped")
+additional_gaps_dropped <- rows_after_keyvars - rows_after_discrimination
+```
+
+To address our research question, we utilized the 2018 General Social Survey (GSS) data, specifically the "Quality of Working Life" module supplemented by some demographic data about our sample population (age, race, sex, household wealth/income).(3) Our analysis focused on a sample of `r nrow(raw_data_cleaned)` individuals that using GSS sample techniques closely mirror national demographic data. GSS survey techniques only allow one adult member per household to participate in the survey and our methods will ensure that each individual's responses are only accounted for once. Survey data is collected between September and December of 2018, limiting the effects of economic or sociopolitical influences.
+
+To capture these relationships, indicators included reported experiences of discrimination based on age, race, and gender, alongside work intensity measures such as extra hours worked per month and daily relaxation time. Mental health was measured by the number of days respondents reported experiencing poor mental health within the last 30 days.
+
+Handling missing data involves steps to maintain consistency and avoid introducing bias. The dataset initially contained `r nrow(raw_data)` entries. Removing rows with missing data for key variables related to mental health, work intensity, and relaxation time reduced the dataset to `r nrow(raw_data_filtered)` entries. The few additional gaps identified across variables related to wealth, age, spouse work status, and perceived discrimination were also dropped (`r additional_gaps_dropped` rows). Missing age values (`r sum(is.na(raw_data_filtered$age))` rows) were replaced with the median value (`r round(median_age, 2)`) to avoid skewing the distribution, while wealth-related gaps (`r sum(is.na(raw_data_filtered$wealth))`) were categorized as "Unknown" to prevent exclusion bias. Perceived discrimination indicators (age, race, and gender) were converted to binary variables for simplicity and clarity when interpreting results. Alternative approaches, such as ordinal scaling or predictive imputation, were considered but not selected due to the risk of introducing artificial patterns or biases. Removing the spouse work status column, which had `r sum(is.na(raw_data_filtered$spwrksta))` missing entries, preserved data quality. We confirmed that the data had no duplicates and numeric variables, including age, household size, extra work days, relaxation hours, and poor mental health days, were confirmed to be within expected ranges. After cleaning, the dataset was randomly split into an exploration set (`r nrow(exploration_set)` entries) and a confirmation set (`r nrow(confirmation_set)` entries) to support model development and evaluation.
+
+Decisions regarding data preparation were guided by the need to accurately represent the variables central to the research question while maintaining transparency throughout the process. `Table 1` below provides a clear record of the steps taken during the cleaning process, including the observations removed and the rationale behind each decision. 
+
+```{r data_cleaning_summary, echo=FALSE, results='asis'}
+knitr::kable(data_cleaning_summary, caption = "Summary of Rows Left and Rows Dropped", format = "markdown")
+```
+
+```{r fig.height=2, fig.width=10}
+# Wealth category based on the original wealth categories
+raw_data_cleaned <- raw_data_cleaned %>%
+  mutate(wealth_simple = case_when(
+    wealth %in% c("Less than $5,000", "$5,000 to $20,000", "$20,000 to $40,000", "$40,000 to $75,000") ~ "Low (<$75k)",
+    wealth %in% c("$75,000 to $100,000", "$100,000 to $150,000", "$150,000 to $250,000", "$250,000 to $500,000") ~ "Medium ($75k-$500k)",
+    wealth %in% c("$500,000 to $1 million", "$1 million to $2 million", "$2 million to $3 million", 
+                  "$3 million to $4 million", "$4 million to $5 million", "$5 million to $10 million", 
+                  "Above $10 million") ~ "High (>$500k)",
+    TRUE ~ "Unknown"))
+
+# Convert wealth_simple to an ordered factor, so the categories appear in a fixed order.
+raw_data_cleaned$wealth_simple <- factor(raw_data_cleaned$wealth_simple,
+                                           levels = c("Low (<$75k)", "Medium ($75k-$500k)", "High (>$500k)", "Unknown"),
+                                           ordered = TRUE)
+
+plot_colors <- c("Black" = "#007B9E", "Other" = "#4ABDAC", "White" = "#33658A")
+
+# Plot
+plot_demog <- ggplot(raw_data_cleaned, aes(x = wealth_simple, fill = race)) +
+  geom_bar(position = "fill", width = 0.7, color = "white", size = 0.2) +
+  facet_wrap(~ sex) +
+  scale_y_continuous(labels = percent_format(), expand = c(0, 0)) +
+  scale_fill_manual(values = plot_colors) +
+  labs(title = "Race Composition Within Wealth Groups, Separated by Gender",
+    x = "Wealth Group",
+    y = "Percentage of Respondents",
+    fill = "Race",
+    caption = "Figure 1: Race Distribution By Wealth And Gender") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", color = "#002147", size = 12),
+    axis.title.x = element_text(size = 8, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 8, margin = margin(r = 10)),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    panel.grid.major.x = element_blank(),
+    strip.text = element_text(face = "bold"),
+    plot.caption = element_text(size = 10, hjust = 0.5, margin = margin(t = 10)))
+```
+
+```{r}
+# Summary of proportions by wealth, race, and gender
+plot_data_summary <- raw_data_cleaned %>%
+  filter(wealth_simple != "Unknown") %>%  
+  group_by(sex, wealth_simple, race) %>%
+  summarise(n = n()) %>%
+  group_by(sex, wealth_simple) %>%
+  mutate(percent = round(n / sum(n) * 100, 1)) %>%
+  ungroup()
+print(plot_data_summary)
+
+```
+
+In our final cleaned dataset, the average respondent was `r round(mean(raw_data_cleaned$age, na.rm = TRUE), 1)` years old, lived in a household of `r round(mean(raw_data_cleaned$hompop, na.rm = TRUE), 0)` people, with `r round(100 * prop.table(table(raw_data_cleaned$sex))["FEMALE"], 1)`% identifying as women and `r round(100 * prop.table(table(raw_data_cleaned$sex))["MALE"], 1)`% as men. Racially, `r round(100 * prop.table(table(raw_data_cleaned$race))["White"], 1)`% identified as White, `r round(100 * prop.table(table(raw_data_cleaned$race))["Black"], 1)`% as Black, and `r round(100 * prop.table(table(raw_data_cleaned$race))["Other"], 1)`% as Other.To build on this, `Figure 1` below represents a 100% stacked bar chart that shows the racial breakdown within each wealth group, separated by gender. Each bar represents all respondents within a wealth bracket, segmented by race. For example, White women make up `r plot_data_summary %>% filter(sex == "FEMALE", wealth_simple == "High (>$500k)", race == "White") %>% pull(percent)`% of those in the high wealth group, compared to `r plot_data_summary %>% filter(sex == "FEMALE", wealth_simple == "Low (<$75k)", race == "White") %>% pull(percent)`% in the low group. Among men, the share of Black respondents drops from `r plot_data_summary %>% filter(sex == "MALE", wealth_simple == "Low (<$75k)", race == "Black") %>% pull(percent)`% in the low group to `r plot_data_summary %>% filter(sex == "MALE", wealth_simple == "High (>$500k)", race == "Black") %>% pull(percent)`% in the high group. The plot gives a clear view of how wealth varies by race across both men and women and helps frame why we included discrimination and economic stressors in our model.
+
+
+```{r}
+plot_demog
+```
+
+# Model Specification
+To investigate the relationship between workplace stressors and mental health, we modeled mntlhlth (days of poor mental health in the past 30 days) as the response variable, using predictors including moredays (extra work days per month), hrsrelax (daily relaxation hours), and binary indicators of workplace discrimination (wkageism, wkracism, wksexism). The initial model was specified as:
+
+$\text{mntlhlth} = \beta_0 + \beta_1 \cdot \text{moredays} + \beta_2 \cdot \text{hrsrelax} + \beta_3 \cdot \text{wkageism} + \beta_4 \cdot \text{wkracism} + \beta_5 \cdot \text{wksexism}$.
+
+
+```{r fig.height=3, fig.width=12, include=FALSE}
+# Visualize the untransformed distribution of key metric variables
+hist_theme <- theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", color = "#002147", size = 12),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10))
+
+# Histogram 1: Mental Health Days
+p1 <- ggplot(confirmation_set, aes(x = mntlhlth)) +
+  geom_histogram(binwidth = 5, fill = "#33658A", color = "white") +
+  labs(title = "Mental Health Days", x = "Days of Poor Mental Health", y = "Frequency") +
+  hist_theme
+
+# Histogram 2: Relaxation Hours
+p2 <- ggplot(confirmation_set, aes(x = hrsrelax)) +
+  geom_histogram(binwidth = 2, fill = "#4ABDAC", color = "white") +
+  labs(title = "Relaxation Hours", x = "Hours per Week", y = "Frequency") +
+  hist_theme
+
+# Histogram 3: Extra Work Days
+p3 <- ggplot(confirmation_set, aes(x = moredays)) +
+  geom_histogram(binwidth = 5, fill = "#007B9E", color = "white") +
+  labs(title = "Extra Work Days", x = "Days per Month", y = "Frequency") +
+  hist_theme
+
+# Arrange the 3 plots in one row
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+
+```{r data-summary, include=FALSE}
+# Summarize the data
+summary(confirmation_set)
+# Visualize the distribution of key variables
+par(mfrow=c(2,2))
+hist(confirmation_set$mntlhlth, main="Mental Health Days", xlab="Days of Poor Mental Health")
+hist(confirmation_set$hrsrelax, main="Relaxation Hours", xlab="Hours per Week")
+hist(confirmation_set$moredays, main="Extra Work Days", xlab="Days per Month")
+par(mfrow=c(1,1))
+# Basic correlations among continuous variables
+continuous_vars <- confirmation_set %>% 
+  select(mntlhlth, moredays, hrsrelax)
+cor(continuous_vars, use="complete.obs")
+```
+
+```{r original-model, include=FALSE}
+# Fit the original linear model
+model <- lm(mntlhlth ~ moredays + hrsrelax + wkageism + wkracism + wksexism, 
+            data = confirmation_set)
+# Model summary
+summary_model <- summary(model)
+summary_model
+# Create a regression table
+stargazer(model, type = "text", title = "Regression Results", 
+          dep.var.labels = "Days of Poor Mental Health (Past 30 Days)",
+          covariate.labels = c("Extra Work Days", "Relaxation Hours", "Ageism", "Racism", "Sexism"),
+          out = "regression_results.txt")
+#Conduct vif to assess multicolineartiy (if the predictor variables are highly related)
+vif(model)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model, vcov = vcovHC(model, type = "HC0"))
+```
+
+```{r log-transform-model, include=FALSE}
+## Log-Transformed Model Analysis
+
+# Create log-transformed variables in exploration_set
+model_log_exploration <- exploration_set %>%
+  mutate(
+    log_mntlhlth = log(mntlhlth + 1), # Adding 1 to handle zeros before log transformation
+    log_moredays = log(moredays + 1),
+    log_hrsrelax = log(hrsrelax + 1),
+    wkageism = factor(wkageism),
+    wkracism = factor(wkracism),
+    wksexism = factor(wksexism)
+  )
+summary(model_log_exploration)
+
+model_log_exploration_fit <- lm(log_mntlhlth ~ log_moredays + log_hrsrelax + wkageism + wkracism + wksexism, 
+                                data = model_log_exploration)
+
+# Create log-transformed variables in confirmation_set
+model_log_transform <- confirmation_set %>%
+  mutate(
+    log_mntlhlth = log(mntlhlth + 1),
+    log_moredays = log(moredays + 1),
+    log_hrsrelax = log(hrsrelax + 1),
+    wkageism = factor(wkageism),
+    wkracism = factor(wkracism),
+    wksexism = factor(wksexism)
+  )
+summary(model_log_transform)
+# Fit the log-transformed model
+model_log <- lm(log_mntlhlth ~ log_moredays + log_hrsrelax + wkageism + wkracism + wksexism, 
+               data = model_log_transform)
+summary(model_log)
+r2_log <- summary(model_log)$r.squared
+rse_log <- summary(model_log)$sigma
+
+stargazer(model_log, type = "text", title = "Regression Results - Log Transformation", 
+          dep.var.labels = "Log(Days of Poor Mental Health + 1)",
+          covariate.labels = c("Log(Extra Work Days + 1)", "Log(Relaxation Hours + 1)", 
+                              "Ageism Reported", "Racism Reported", "Sexism Reported"),
+          out = "regression_results_log.txt")
+
+# Assess multicollinearity
+vif_results_log <- vif(model_log)
+print("Variance Inflation Factors for Log Model:")
+print(vif_results_log)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model_log)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model_log,vcov = vcovHC(model_log, type = "HC0"))
+# Calculate exact percentage changes for interpretation
+cat("\nExact percentage changes in mental health days:\n")
+pct_changes <- data.frame(
+  Variable = names(coef(model_log)),
+  Coefficient = coef(model_log),
+  Percentage_Change = (exp(coef(model_log)) - 1) * 100
+)
+print(pct_changes)
+#Conduct vif to assess multicolineartiy (if the predictor variables are highly related)
+vif(model)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model, vcov = vcovHC(model, type = "HC0"))
+
+```
+
+```{r sqrt-transform-model, include=FALSE}
+## Square Root Transformation Model
+# Create a square root transformation
+confirmation_set <- confirmation_set %>%
+  mutate(sqrt_mntlhlth = sqrt(mntlhlth + 1))  # Adding 1 to handle zero values
+# Fit the square root transformed model
+model_sqrt <- lm(sqrt_mntlhlth ~ moredays + hrsrelax + wkageism + wkracism + wksexism, 
+                data = confirmation_set)
+# Summary of the square root model
+summary(model_sqrt)
+r2_sqrt <- summary(model_sqrt)$r.squared
+rse_sqrt <- summary(model_sqrt)$sigma
+
+# Create a regression table for the square root model
+stargazer(model_sqrt, type = "text", title = "Regression Results - Sqrt Transformation", 
+          dep.var.labels = "Sqrt(Days of Poor Mental Health + 1)",
+          covariate.labels = c("Extra Work Days", "Relaxation Hours", 
+                              "Ageism Reported", "Racism Reported", "Sexism Reported"),
+          out = "regression_results_sqrt.txt")
+
+#Conduct vif to assess multicolineartiy (if the predictor variables are highly related)
+vif(model_sqrt)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model_sqrt)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model_sqrt, vcov = vcovHC(model_sqrt, type = "HC0"))
+```
+
+Using the exploration set of `r nrow(exploration_set)` individuals, we compared three model specifications: untransformed, log-transformed, and square-root transformed. More details on the models we explored can be found in the appendix. Histograms (see appendix) revealed strong right skew in the untransformed metric variables, prompting a log(x + 1) transformation of mntlhlth, moredays, and hrsrelax. This approach addressed skewness, reduced heteroscedasticity, and improved model interpretability, though some right-skew remained.
+
+
+```{r}
+r2_exploration <- round(summary(model_log_exploration_fit)$r.squared * 100, 1)
+r2_confirmation <- round(summary(model_log)$r.squared * 100, 1)
+```
+
+The log-transformed model performed best, with an R-squared of `r r2_exploration`% in the exploration set and `r r2_confirmation`% in the confirmation set, suggesting that statistically significant predictors explain only about `r r2_confirmation`% of the variation in poor mental health days. While modest, this level of explained variance is typical in social science research dealing with complex phenomena like mental health and suggests that additional unmeasured factors likely contribute to poor mental health outcomes. Future research should explore additional factors that could strengthen explanatory power.
+
+The hypothesis of our OLS regression can be phrased as follows:\
+**Null Hypothesis (**$H_0$): Employees who work more, relax less or experience workplace discrimination will have not have a significant relationship on days of poor mental health per month.\
+**Alternative Hypothesis (**$H_1$): Employees who work more, relax less or experience workplace discrimination will have a significant relationship with days of poor mental health per month.
+
+
+```{r, include=FALSE}
+# Visualize the distribution of key variables with log transformation
+hist(model_log_transform$log_mntlhlth, main="Log Transformed Mental Health", xlab="Log Transformed Days per Month")
+hist(model_log_transform$log_hrsrelax, main="Log Transformed Relaxation Hours", xlab="Log Transformed Relaxation Hours per Day")
+hist(model_log_transform$log_moredays, main="Log Transformed Extra Work Days", xlab="Log Transformed Days per Month")
+```
+
+
+```{r count-models, include=FALSE}
+## Count Data Models (Alternative Approaches)
+# Since mental health days are count data, we consider Poisson/Negative Binomial as well
+# Poisson regression
+model_poisson <- glm(mntlhlth ~ moredays + hrsrelax + wkageism + wkracism + wksexism, 
+                    data = confirmation_set, family = poisson)
+summary(model_poisson)
+```
+
+```{r model-diagnostics, include=FALSE}
+## Model Comparison
+# Create a function for consistent model diagnostics
+plot_diagnostics <- function(model, title) {
+  par(mfrow = c(2, 2))
+  plot(model, main = title)
+  par(mfrow = c(1, 1))
+}
+# Apply diagnostic function to each model
+plot_diagnostics(model, "Original Model Diagnostics")
+plot_diagnostics(model_log, "Log-Transformed Model Diagnostics")
+plot_diagnostics(model_sqrt, "Square Root Model Diagnostics")
+# Assess normality of residuals using Shapiro-Wilk test
+cat("Shapiro-Wilk test for normality of residuals:\n")
+shapiro.test(residuals(model))
+shapiro.test(residuals(model_log))
+shapiro.test(residuals(model_sqrt))
+# Assess heteroscedasticity using Breusch-Pagan test
+cat("\nBreusch-Pagan test for heteroscedasticity:\n")
+if (require(lmtest)) {
+  bptest(model)
+  bptest(model_log)
+  bptest(model_sqrt)
+}
+```
+
+```{r, include=FALSE}
+#Plots the non-transformed residuals for the predictor moredays - appears linear
+plot(confirmation_set$moredays,model$residuals)
+# Add LOWESS line
+lines(lowess(confirmation_set$moredays, model$residuals), col = "blue", lwd = 2)
+#Plots the log transformed residuals for the predictor moredays - appears linear
+plot(confirmation_set$moredays,model_log$residuals)
+# Add LOWESS line
+lines(lowess(confirmation_set$moredays, model_log$residuals), col = "blue", lwd = 2)
+```
+
+```{r, include=FALSE}
+#Plots the non-transformed residuals for the predictor hrsrelax - appears linear
+plot(confirmation_set$hrsrelax,model$residuals)
+# Add LOWESS line
+lines(lowess(confirmation_set$hrsrelax, model$residuals), col = "blue", lwd = 2)
+#Plots the log transformed residuals for the predictor hrsrelax - appears linear
+plot(confirmation_set$hrsrelax,model_log$residuals)
+# Add LOWESS line
+lines(lowess(confirmation_set$hrsrelax, model_log$residuals), col = "blue", lwd = 2)
+```
+
+```{r, include=FALSE}
+ggplot(model, aes(x = moredays, y = mntlhlth)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Scatterplot of Mental Health Days vs. Extra Work Days",
+       x = "Extra Work Days", y = "Days of Poor Mental Health")
+```
+
+```{r, include=FALSE}
+# showing funnel pattern in the residuals
+plot(model, which = 1) 
+plot(model_log, which = 1) 
+```
+
+```{r, include=FALSE}
+###QQ plots show the distributions for each of our proposed models, both showing a leptokurtotic distribution with fat tails
+plot(model, which = 2)
+plot(model_log, which = 2)
+```
+
+```{r, include=FALSE}
+###Shapiro test confrims this is a non-normal distribution
+shapiro.test(residuals(model))
+###Assesses both model for homoskedasticity, neither proposed model appears to be as we don't see a nice linear concentration across the line. instead we see a very heavy concentration of the variance to the left indicating heteroskedasticity.
+plot(model, which = 3)
+plot(model_log, which = 3)
+```
+
+```{r, include=FALSE}
+###A histogram of the residuals for both our proposed models
+hist(residuals(model), breaks = 30, probability = TRUE, main = "Histogram of Residuals")
+curve(dnorm(x, mean = mean(residuals(model)), sd = sd(residuals(model))), 
+      col = "red", lwd = 2, add = TRUE)
+hist(residuals(model_log), breaks = 30, probability = TRUE, main = "Histogram of Residuals")
+curve(dnorm(x, mean = mean(residuals(model_log)), sd = sd(residuals(model_log))), 
+      col = "red", lwd = 2, add = TRUE)
+```
+
+```{r, include=FALSE}
+# Assess the residual variance for model without transformations
+# Extract residuals
+residuals <- residuals(model)
+# Calculate variance of residuals
+residual_variance <- var(residuals)
+print(residual_variance)
+###Assess the linearity of the model_log residuals
+###The generated plots display a somewhat linear relationship around the 0 mark
+plot(model, which =1)
+confirmation_set %>% 
+  mutate(
+    model_preds = predict(model), 
+    model_resids = resid(model)
+  ) %>% 
+  ggplot(aes(model_preds, model_resids)) + 
+  geom_point() + 
+  stat_smooth()
+```
+
+```{r, include=FALSE}
+# Assess the residual variance for model_log 
+residuals <- residuals(model_log)
+# Calculate variance of residuals
+residual_variance <- var(residuals)
+print(residual_variance)
+###Assess the linearity of the model_log residuals
+plot(model_log, which =1)
+confirmation_set %>% 
+  mutate(
+    model_preds = predict(model_log), 
+    model_resids = resid(model_log)
+  ) %>% 
+  ggplot(aes(model_preds, model_resids)) + 
+  geom_point() + 
+  stat_smooth()
+```
+
+Additionally, we explored count data approaches (Poisson and negative binomial) given that our outcome represents discrete counts of days, with evidence of over dispersion supporting the negative binomial specification. Both these models may or may not be a better model fit which we may want to explore in future research. 
+
+# Model Assumptions
+In assessing the linear regression model, due to our sample size of 300+ in both the exploratory and confirmation data sets, we evaluated several key assumptions based on the Large Sample Linear Model assumptions to ensure the validity of the results. The two assumptions that must be met is that the data is independent and identially distributed (IID) and that there is a unique best linear predictor (BLP). If any of the above mentioned assumptions do not hold the statistical implications could result in inaccurate measures and  incorrect or misleading conclusions and invalid results.
+
+### Independent and Identically Distrbuted
+Regarding the assumption of independence, our cross-sectional survey data was collected by the GSS which uses statistically weighted techniques and a nationally representative sample supporting the assumption of IID. The General Social Survey has a strong reputation for using rigorous sampling methods, and each respondent’s ratings for the variables in question are recorded independently. Since each respondent is pulled from the same distribution of US residents and provides answers to the same questions, the identical distribution assumption is reasonable. We acknowledge that some clustering (e.g., geographic) may exist, it is unlikely to substantially bias the results given the randomization protocol. This assumption is mostly satisfied.
+
+### A Unique BLP Exists
+In order for this assumption to be met, we must assume that a Best Linear Predictor (BLP) both exists and is unique. This requires that the explanatory variables have a finite mean and a finite, non-zero variance. After running a QQ plot on the log-transformed model, we observed a leptokurtotic distribution with fat tails. This raises concerns about the assumption of finite variance, and therefore the uniqueness of the BLP (see QQ Plot in the appendix). However, this pattern is likely influenced by real-world constraints in the dataset. For example, a limited number of days in a month or hours in a day, which help explain the peakedness of the distribution. Since our linear model was able to run successfully, we know that perfect multicollinearity is not present. Additionally, to support this we conducted a Variance Inflation Factor (VIF) test, which returned values between `r round(min(vif(model_log)), 3)` and `r round(max(vif(model_log)), 3)` or all predictors. These results indicate minimal collinearity and confirm that the correlation matrix is invertible.
+
+To further examine linearity, we visualized the relationship between relaxation hours and mental health days. The scatter plot below, which includes a fitted regression line, shows a slight negative trend. However, the relationship is weak and not statistically significant, with an R-squared value near zero. Our use of robust standard errors helps address potential heteroscedasticity, but these challenges suggest that our results should be interpreted with appropriate caution. Future analyses may benefit from exploring alternative modeling approaches.
+
+```{r, fig.height=5, fig.width=10}
+ggplot(confirmation_set, aes(x = hrsrelax, y = mntlhlth)) +
+  geom_point(alpha = 0.4, color = "#33658A") +
+  geom_smooth(method = "lm", color = "#007B9E", se = TRUE) +
+  labs(title = "Relationship Between Relaxation Hours and Poor Mental Health Days",
+       x = "Relaxation Hours per Day",
+       y = "Days of Poor Mental Health (Past 30 Days)") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", color = "#002147"))
+
+```
+
+```{r}
+# Fit a basic linear model for relaxation hours vs. mental health days
+relax_model <- lm(mntlhlth ~ hrsrelax, data = confirmation_set)
+
+# Print summary of the model
+summary(relax_model)
+
+```
+
+
+
+```{r, include=FALSE}
+# Calculate percent increase in poor mental health days due to workplace sexism
+sexism_percent_incr <- (exp(coef(model_log)["wksexismYES"]) - 1) * 100
+# Expected number of additional poor mental health days due to workplace sexism
+days_sexism <- round(mean(confirmation_set$mntlhlth, na.rm = TRUE) * (exp(coef(model_log)["wksexismYES"]) - 1), 1)
+
+# Workplace ageism
+ageism_percent_incr <- (exp(coef(model_log)["wkageismYES"]) - 1) * 100
+days_ageism <- round(mean(confirmation_set$mntlhlth, na.rm = TRUE) * (exp(coef(model_log)["wkageismYES"]) - 1), 1)
+
+# Calculate percent change in mental health days if relaxation hours double
+relaxation_double_decr <- abs(round((exp(coef(model_log)["log_hrsrelax"] * log(2)) - 1) * 100, 1))
+```
+
+# Model Results and Interpretation
+```{r, results = 'asis'}
+table_lines <- readLines(textConnection(capture.output(
+  stargazer(model_log, type = "latex",
+            title = "Regression Results – Log Transformation",
+            dep.var.labels = "Log(Days of Poor Mental Health + 1)",
+            covariate.labels = c("Log(Extra Work Days + 1)", "Log(Relaxation Hours + 1)",
+                                 "Ageism Reported", "Racism Reported", "Sexism Reported"))
+)))
+
+# Remove metadata comments from the first few lines
+table_lines_clean <- table_lines[!grepl("^%", table_lines)]
+
+cat(paste(table_lines_clean, collapse = "\n"))
+```
+
+Our log-transformed regression model reveals significant relationships between workplace discrimination, relaxation time, and mental health outcomes. The overall model is statistically significant (F = `r round(summary(model_log)$fstatistic[1], 2)`, p < 0.001), explaining approximately  `r round(summary(model_log)$r.squared * 100, 1)`% of the variation in log-transformed mental health days. Workplace discrimination variables show positive coefficients, indicating there may be harmful effects on mental health to be further explored in future research. For example, experiencing workplace sexism is associated with a `r round(pct_changes$Percentage_Change[pct_changes$Variable == "wksexismYES"], 1)`% increase in days of poor mental health ($\beta$ = `r round(coef(model_log)["wksexismYES"], 3)`, p < 0.001), representing approximately `r days_sexism` additional days monthly. Similarly, workplace ageism corresponds to a `r round(pct_changes$Percentage_Change[pct_changes$Variable == "wkageismYES"], 1)`% increase ($\beta$ = `r round(coef(model_log)["wkageismYES"], 3)`, p = `r signif(coeftest(model_log)[c("wkageismYES"), "Pr(>|t|)"], 3)`) or about `r days_ageism` additional days of monthly mental health burden. Conversely, relaxation hours exhibit a protective effect on mental health. Each 10% increase in weekly relaxation time is associated with approximately a `r abs(round(coef(model_log)["log_hrsrelax"] * 10, 1))`% decrease in days of poor mental health ($\beta$ = `r round(coef(model_log)["log_hrsrelax"], 3)`, p = `r signif(coeftest(model_log)["log_hrsrelax", "Pr(>|t|)"], 3)`). While this effect is smaller in magnitude than those associated with workplace discrimination, its cumulative impact can still be meaningful. For example, doubling weekly relaxation time (e.g., from 7 to 14 hours) is associated with a `r relaxation_double_decr`% decrease in poor mental health days. As a result we reject the Null Hypothesis that these predictor variables do not have a significant relationship with poor mental health in favor of the Alternate Hypothesis that a significant relationship exists. These findings may be used to invest in further research exploring if there is a causal relationship between workplace anti-discrimination efforts or work-life balance initiatives and mental health.
+
+\newpage
+
+# Appendix
+
+## Link to Data Source
+https://github.com/mids-w203/lab-2-rmadillos-lab2/blob/main/data/Data.xlsx
+
+## Model Specifications Explored
+In the first iteration, we used the exploratory dataset of `r nrow(exploration_set)` individuals to assess transformations and examine distribution shapes and relationships among predictors. The dependent variable, days of poor mental health per month, was highly right-skewed, suggesting that linear regression assumptions may be violated in untransformed data. We therefore explored three primary model specifications: (1) an untransformed linear model, (2) a log-transformed model using log(x + 1) to both the dependent and continuous independent variables, and (3) a square-root transformed model.
+
+To assess multicollinearity among the predictors, we calculated the Variance Inflation Factor (VIF) for each model, ensuring that no predictors exhibited problematic levels of multicollinearity. For each model, we calculated the significance of the coefficients of our predictor variables using robust standard errors to address potential heteroscedasticity, ensuring valid inference regardless of error variance patterns. The results of these models were formatted and explored using the stargazer package. 
+
+### Log Transformed Linear Model
+After evaluating these three models, the log transformation model was selected as our preferred approach because it most effectively addresses the heavy right skew in the metric variables mental health days, relaxation hours and extra work days along with the heteroscedasticity in the variance.
+```{r, include=FALSE}
+# Fit the log-transformed model
+model_log <- lm(log_mntlhlth ~ log_moredays + log_hrsrelax + wkageism + wkracism + wksexism,
+               data = model_log_transform)
+stargazer(model_log, type = "text", title = "Regression Results - Log Transformation",
+          dep.var.labels = "Log(Days of Poor Mental Health + 1)",
+          covariate.labels = c("Log(Extra Work Days + 1)", "Log(Relaxation Hours + 1)",
+                              "Ageism Reported", "Racism Reported", "Sexism Reported"),
+          out = "regression_results_log.txt")
+# Assess multicollinearity
+vif_results_log <- vif(model_log)
+print("Variance Inflation Factors for Log Model:")
+print(vif_results_log)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model_log)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model_log,vcov = vcovHC(model_log, type = "HC0"))
+```
+
+### Untransformed Linear Model
+
+```{r, include=FALSE}
+# Fit the original linear model
+model <- lm(mntlhlth ~ moredays + hrsrelax + wkageism + wkracism + wksexism, 
+            data = confirmation_set)
+# Model summary
+summary_model <- summary(model)
+summary_model
+# Create a regression table
+stargazer(model, type = "text", title = "Regression Results", 
+          dep.var.labels = "Days of Poor Mental Health (Past 30 Days)",
+          covariate.labels = c("Extra Work Days", "Relaxation Hours", "Ageism", "Racism", "Sexism"),
+          out = "regression_results.txt")
+#Conduct vif to assess multicolineartiy (if the predictor variables are highly related)
+vif(model)
+#Conduct coef test to evaluate the significance of the predictor variables
+coeftest(model)
+#Conduct coef test using robust standard errors to evaluate the significance of the predictor variables
+coeftest(model, vcov = vcovHC(model, type = "HC0"))
+```
+The untransformed model has a lower R squared of `r round(summary_model$r.squared, 3)` as compared to the log transformed model of `r round(r2_log, 3)` making the log transformed model better at explaining the variance in days of poor mental health. Additionally, the untransformed model includes fewer statistically significant predictor variables and a residual standard error of 6.716 indicating that this model is less precise.
+
+### Square Root transformed linear model
+```{r, include=FALSE}
+## Square Root Transformation Model
+# Create a square root transformation
+confirmation_set <- confirmation_set %>%
+  mutate(sqrt_mntlhlth = sqrt(mntlhlth + 1))  # Adding 1 to handle zero values
+# Fit the square root transformed model
+model_sqrt <- lm(sqrt_mntlhlth ~ moredays + hrsrelax + wkageism + wkracism + wksexism, 
+                data = confirmation_set)
+# Summary of the square root model
+summary(model_sqrt)
+# Create a regression table for the square root model
+stargazer(model_sqrt, type = "text", title = "Regression Results - Sqrt Transformation", 
+          dep.var.labels = "Sqrt(Days of Poor Mental Health + 1)",
+          covariate.labels = c("Extra Work Days", "Relaxation Hours", 
+                              "Ageism Reported", "Racism Reported", "Sexism Reported"),
+          out = "regression_results_sqrt.txt")
+```
+Similarly, the Square Root transformed model had fewer significant predictor variables, a lower R squared of `r round(r2_sqrt, 5)` indicating a poorer explanation of the variance in the dependent variable. The residual standard error of `r round(rse_sqrt, 3)` is lower than that of the untransformed model but still higher than the log-transformed model, which was `r round(rse_log, 3)`.
+
+## Residuals vs Fitted Model of the Log-transformed confirmation set
+```{r, echo=FALSE, message=FALSE, fig.width=3, fig.height=2}
+# Assess the residual variance for model_log 
+residuals <- residuals(model_log)
+# Calculate variance of residuals
+residual_variance <- var(residuals)
+# print(residual_variance)
+
+###Assess the linearity of the model_log residuals
+# plot(model_log, which =1)
+confirmation_set %>% 
+  mutate(
+    model_preds = predict(model_log), 
+    model_resids = resid(model_log)
+  ) %>% 
+  ggplot(aes(model_preds, model_resids)) + 
+  geom_point() + 
+  stat_smooth()
+
+```
+
+```{r, echo=FALSE, fig.width=8,fig.height=3}
+# ```{r, echo=FALSE,fig.width=6, fig.height=4} if graphs are too big, then we use this line instead
+###QQ plots show the distributions for each of our proposed models, both showing a leptokurtotic distribution with fat tails
+par(mfrow = c(1, 2))
+plot(model_log, which = 2)
+hist(residuals(model_log), breaks = 30, probability = TRUE, main = "Histogram of Residuals")
+curve(dnorm(x, mean = mean(residuals(model_log)), sd = sd(residuals(model_log))), 
+      col = "red", lwd = 2, add = TRUE)
+```
+
+## Pre-Transformed Distributions
+
+```{r fig.height=3, fig.width=12}
+# Visualize the untransformed distribution of key metric variables
+hist_theme <- theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", color = "#002147", size = 12),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10))
+
+# Histogram 1: Mental Health Days
+p1 <- ggplot(confirmation_set, aes(x = mntlhlth)) +
+  geom_histogram(binwidth = 5, fill = "#33658A", color = "white") +
+  labs(title = "Mental Health Days", x = "Days of Poor Mental Health", y = "Frequency") +
+  hist_theme
+
+# Histogram 2: Relaxation Hours
+p2 <- ggplot(confirmation_set, aes(x = hrsrelax)) +
+  geom_histogram(binwidth = 2, fill = "#4ABDAC", color = "white") +
+  labs(title = "Relaxation Hours", x = "Hours per Week", y = "Frequency") +
+  hist_theme
+
+# Histogram 3: Extra Work Days
+p3 <- ggplot(confirmation_set, aes(x = moredays)) +
+  geom_histogram(binwidth = 5, fill = "#007B9E", color = "white") +
+  labs(title = "Extra Work Days", x = "Days per Month", y = "Frequency") +
+  hist_theme
+
+# Arrange the 3 plots in one row
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+
+# Citations
+1. Papathanasiou IV. Work-related Mental Consequences: Implications of Burnout on Mental Health Status Among Health Care Providers. Acta Inform Med. 2015 Feb;23(1):22-8. doi: 10.5455/aim.2015.23.22-28. Epub 2015 Feb 22. PMID: 25870487; PMCID: PMC4384854.
+2. Nadimpalli SB, James BD, Yu L, Cothran F, Barnes LL. The association between discrimination and depressive symptoms among older African Americans: the role of psychological and social factors. Exp Aging Res. 2015;41(1):1-24. doi: 10.1080/0361073X.2015.978201. PMID: 25494668; PMCID: PMC4413914.
+3. Davern, Michael; Bautista, Rene; Freese, Jeremy; Herd, Pamela; and Morgan, Stephen L.; General Social Survey 1972-2024. [Machine-readable data file]. Principal Investigator, Michael Davern; Co-Principal Investigators, Rene Bautista, Jeremy Freese, Pamela Herd, and Stephen L. Morgan. Sponsored by National Science Foundation. NORC ed. Chicago: NORC, 2024: NORC at the University of Chicago [producer and distributor]. Data accessed from the GSS Data Explorer website at  gssdataexplorer.norc.org.
+
